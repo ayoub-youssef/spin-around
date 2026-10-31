@@ -15,6 +15,7 @@ namespace spinAround {
         angle: number;
 
         constructor(
+            public scene: scene.Scene,
             public sprite: Sprite,
             public center: Sprite,
             public distance: number,
@@ -29,25 +30,25 @@ namespace spinAround {
         }
     }
 
-    function orbitsFor(sc: scene.Scene, create = false): Orbit[] {
-        let orbits = (sc as any).__spinAroundOrbits as Orbit[];
-        if (!orbits && create) {
-            orbits = [];
-            (sc as any).__spinAroundOrbits = orbits;
+    // Orbiting state is kept by the extension. Do not attach custom fields to
+    // Scene objects, because MakeCode's runtime only allows declared fields.
+    let orbits: Orbit[] = [];
+    let updateContexts: control.EventContext[] = [];
+
+    function ensureUpdate() {
+        const context = game.eventContext();
+        for (let i = 0; i < updateContexts.length; i++) {
+            if (updateContexts[i] === context) return;
         }
-        return orbits;
+
+        updateContexts.push(context);
+        game.onUpdate(updateOrbits);
     }
 
-    function startUpdating(sc: scene.Scene) {
-        if ((sc as any).__spinAroundUpdating) return;
-        (sc as any).__spinAroundUpdating = true;
-        sc.eventContext.registerFrameHandler(scene.UPDATE_PRIORITY, () => updateOrbits(sc));
-    }
+    function updateOrbits() {
+        if (!orbits.length) return;
 
-    function updateOrbits(sc: scene.Scene) {
-        const orbits = orbitsFor(sc);
-        if (!orbits || !orbits.length) return;
-
+        const sc = game.currentScene();
         // Cap the time step so the sprite does not jump a long way after a pause.
         const dt = Math.min(game.eventContext().deltaTime, 0.1);
         const keep: Orbit[] = [];
@@ -57,6 +58,12 @@ namespace spinAround {
 
             // Stop if either sprite has been removed from the game.
             if ((orbit.sprite.flags | orbit.center.flags) & sprites.Flag.Destroyed) {
+                continue;
+            }
+
+            // Orbits belong to the scene where they were started.
+            if (orbit.scene !== sc) {
+                keep.push(orbit);
                 continue;
             }
 
@@ -71,14 +78,10 @@ namespace spinAround {
             keep.push(orbit);
         }
 
-        if (keep.length !== orbits.length) {
-            (sc as any).__spinAroundOrbits = keep;
-        }
+        orbits = keep;
     }
 
     function findOrbit(sprite: Sprite): Orbit {
-        const orbits = orbitsFor(game.currentScene());
-        if (!orbits) return undefined;
         for (let i = 0; i < orbits.length; i++) {
             if (orbits[i].sprite === sprite) return orbits[i];
         }
@@ -104,10 +107,8 @@ namespace spinAround {
     export function startSpinning(sprite: Sprite, center: Sprite, distance: number, speed: number, direction: SpinDirection) {
         if (!sprite || !center || sprite === center) return;
 
-        const sc = game.currentScene();
-        startUpdating(sc);
+        ensureUpdate();
 
-        const orbits = orbitsFor(sc, true);
         for (let i = 0; i < orbits.length; i++) {
             if (orbits[i].sprite === sprite) {
                 orbits.splice(i, 1);
@@ -116,6 +117,7 @@ namespace spinAround {
         }
 
         orbits.push(new Orbit(
+            game.currentScene(),
             sprite,
             center,
             Math.max(0, distance || 0),
@@ -135,16 +137,13 @@ namespace spinAround {
     export function stopSpinning(sprite: Sprite) {
         if (!sprite) return;
 
-        const orbits = orbitsFor(game.currentScene());
-        if (!orbits) return;
-
         const keep: Orbit[] = [];
         for (let i = 0; i < orbits.length; i++) {
             if (orbits[i].sprite !== sprite) {
                 keep.push(orbits[i]);
             }
         }
-        (game.currentScene() as any).__spinAroundOrbits = keep;
+        orbits = keep;
     }
 
     /**
