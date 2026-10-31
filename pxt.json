@@ -1,0 +1,16 @@
+{
+    "name": "spin-around",
+    "version": "0.1.0",
+    "description": "Make sprites spin around other sprites.",
+    "dependencies": {
+        "game": "*"
+    },
+    "files": [
+        "main.ts",
+        "README.md"
+    ],
+    "supportedTargets": [
+        "arcade"
+    ],
+    "preferredEditor": "tsprj"
+}
